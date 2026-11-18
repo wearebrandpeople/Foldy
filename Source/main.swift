@@ -105,7 +105,7 @@ final class FinderObserver {
                     self.onStatus?("Finder okunamadı. Tekrar deneyebilirsin.", true)
                     return
                 }
-                self.onStatus?("Finder açıkken klasörler otomatik kaydedilir.", false)
+                self.onStatus?("", false)
                 guard let path = result, !path.isEmpty else { self.lastPath = nil; return }
                 guard path != self.lastPath else { return }
                 self.lastPath = path
@@ -199,8 +199,10 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
     let observer: FinderObserver
     let search = SearchField()
     let table = FolderTable()
-    private let status = NSTextField(wrappingLabelWithString: "Finder’da bir klasör açarak başlayabilirsin.")
-    private let empty = NSTextField(wrappingLabelWithString: "Henüz klasör yok\nFinder’da açtığın klasörler burada görünecek.")
+    private let status = NSTextField(wrappingLabelWithString: "")
+    private var normalBottom: NSLayoutConstraint!
+    private var errorBottom: NSLayoutConstraint!
+    private let empty = NSTextField(wrappingLabelWithString: "Henüz klasör yok")
     private let permission = NSButton(title: "İzinler", target: nil, action: nil)
     private let retry = NSButton(title: "Tekrar dene", target: nil, action: nil)
     private var visible: [FolderEntry] = []
@@ -213,7 +215,7 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
     required init?(coder: NSCoder) { fatalError() }
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 520))
-        let title = NSTextField(labelWithString: "Klasör Panosu")
+        let title = NSTextField(labelWithString: "Foldy")
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         search.placeholderString = "Klasör adı veya yol ara"
         search.delegate = self
@@ -248,6 +250,7 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
         empty.font = .systemFont(ofSize: 13)
         status.font = .systemFont(ofSize: 11)
         status.textColor = .secondaryLabelColor
+        status.isHidden = true
         permission.target = self; permission.action = #selector(openPermissions)
         retry.target = self; retry.action = #selector(retryPermission)
         permission.isHidden = true; retry.isHidden = true
@@ -257,6 +260,9 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
+        normalBottom = scroll.bottomAnchor.constraint(equalTo: clear.topAnchor, constant: -12)
+        errorBottom = scroll.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -10)
+        normalBottom.isActive = true
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
             title.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
@@ -267,7 +273,6 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
             scroll.topAnchor.constraint(equalTo: search.bottomAnchor, constant: 12),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            scroll.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -10),
             empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
             empty.widthAnchor.constraint(equalToConstant: 340),
@@ -295,8 +300,12 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
         DispatchQueue.main.async { self.view.window?.makeFirstResponder(self.search) }
     }
     func setStatus(_ message: String, needsPermission: Bool) {
-        loadViewIfNeeded()
+        _ = view
         status.stringValue = message
+        status.isHidden = message.isEmpty
+        normalBottom.isActive = false
+        errorBottom.isActive = false
+        if message.isEmpty { normalBottom.isActive = true } else { errorBottom.isActive = true }
         permission.isHidden = !needsPermission; retry.isHidden = !needsPermission
     }
     func controlTextDidChange(_ obj: Notification) { reload() }
@@ -312,7 +321,7 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
         table.rowActionsVisible = false
         table.reloadData()
         empty.isHidden = !visible.isEmpty
-        empty.stringValue = query.isEmpty ? "Henüz klasör yok\nFinder’da açtığın klasörler burada görünecek." : "Eşleşen klasör bulunamadı."
+        empty.stringValue = query.isEmpty ? "Henüz klasör yok" : "Eşleşen klasör bulunamadı."
     }
     func numberOfRows(in tableView: NSTableView) -> Int { visible.count }
     func tableView(_ tableView: NSTableView, rowActionsForRow row: Int, edge: NSTableView.RowActionEdge) -> [NSTableViewRowAction] {
@@ -394,7 +403,7 @@ final class PanelController: NSViewController, NSTableViewDataSource, NSTableVie
     @objc private func quitApp() { NSApp.terminate(nil) }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let store = HistoryStore()
@@ -403,26 +412,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "folder.badge.clock", accessibilityDescription: "Klasör Panosu")
-            ?? NSImage(systemSymbolName: "folder", accessibilityDescription: "Klasör Panosu")
-        statusItem.button?.toolTip = "Klasör Panosu — son açılan klasörler"
+        let menuIcon = Bundle.main.url(forResource: "FoldyMenu", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+        menuIcon?.size = NSSize(width: 22, height: 22)
+        menuIcon?.isTemplate = true
+        menuIcon?.accessibilityDescription = "Foldy"
+        statusItem.button?.image = menuIcon ?? NSImage(systemSymbolName: "folder", accessibilityDescription: "Foldy")
+        statusItem.button?.toolTip = "Foldy — son açılan klasörler"
         statusItem.button?.target = self; statusItem.button?.action = #selector(toggle)
         panel = PanelController(store: store, observer: observer)
         popover.contentViewController = panel
         popover.contentSize = NSSize(width: 420, height: 520)
         popover.behavior = .transient
+        popover.delegate = self
         panel.onClose = { [weak self] in self?.popover.performClose(nil) }
         store.onChange = { [weak self] in self?.panel.reload() }
         observer.onFolder = { [weak self] path in self?.store.record(path) }
         observer.onStatus = { [weak self] text, denied in self?.panel.setStatus(text, needsPermission: denied) }
         observer.start()
     }
+    func popoverDidClose(_ notification: Notification) { statusItem.button?.highlight(false) }
     @objc private func toggle() {
         guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(nil) }
         else {
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            button.highlight(true)
             panel.prepare()
         }
     }
@@ -462,6 +477,12 @@ if CommandLine.arguments.contains("--self-test") {
     precondition(HistoryStore(file: file).entries.map(\.path) == ["/tmp/keep"])
     try? FileManager.default.removeItem(at: dir)
     print("PASS: normalization, recency, deduplication, persistence, limit, clear, legacy migration, pin persistence, pin protection, unpin, individual removal")
+} else if CommandLine.arguments.contains("--refresh-login") {
+    do {
+        if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
+        try SMAppService.mainApp.register()
+        print("LOGIN_REFRESHED")
+    } catch { fputs("Login registration failed: \(error)\n", stderr); exit(1) }
 } else if CommandLine.arguments.contains("--enable-login") {
     do {
         if SMAppService.mainApp.status != .enabled && SMAppService.mainApp.status != .requiresApproval { try SMAppService.mainApp.register() }
