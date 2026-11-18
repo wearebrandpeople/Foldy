@@ -15,3 +15,6 @@ work/
 *.mobileprovision
 notary-*.json
 __pycache__/
+
+*.dmg
+Assets/*.iconset/

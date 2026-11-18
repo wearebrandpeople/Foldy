@@ -1,3 +1,14 @@
+# Foldy sürüm notları
+
+## 0.5.1
+
+- Foldy adı, renkli uygulama simgesi ve tek renk menü çubuğu simgesi.
+- Normal durumda Finder bilgilendirme satırı ve boş alanı kaldırıldı.
+- İzin ve hata mesajları korundu.
+- macOS 13+ için Apple Silicon + Intel Universal derleme.
+- İmzalı ve notarize DMG dağıtımı.
+- Önceki klasör geçmişi ve sabitlemeler korunur.
+
 # Sürüm notları
 
 ## 0.4.1
